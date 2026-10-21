@@ -14,6 +14,8 @@ project-onboarding/
 ├── SKILL.md              # skill 本体：九节导览骨架 + 操作纪律（agent 读这个）
 ├── scripts/
 │   └── gen_visual.py     # 导览 markdown → 自包含 HTML 生成器（纯标准库，零依赖）
+├── tests/
+│   └── test_gen_visual.py  # 黑盒回归套件（unittest，24 用例；python3 tests/test_gen_visual.py -v）
 └── README.md
 ```
 
@@ -47,9 +49,10 @@ python3 scripts/gen_visual.py --in 导览.md --out 图谱.html --title "XX 项�
 
 解析规则（导览按此写，即可被机械生成）：
 
-- `##` / `###` / `####` → 思维导图分支层级
+- `##` / `###` / `####` → 思维导图分支层级；同级列表项互为兄弟，段落与代码块是纯叶子
 - `-` / `*` 列表项 → 叶子（两空格缩进 = 下一层）
-- ` ```flow ` 围栏块 → 流程图，每行一条链：`节点A -> 节点B -> 节点C`，行首 `标签:` 为该链命名
+- ` ```flow ` 围栏块 → 流程图，每行一条链：`节点A -> 节点B -> 节点C`，行首 `标签:` 为该链命名（同一块内多条链可各带标签）
+- 其它代码围栏原样保留为 `<pre>` 代码块；围栏未闭合时内容照常投影并 stderr 告警
 
 输出为单文件 HTML：`<details>/<summary>` 折叠树 + CSS 流程行，**零 JS 零外部依赖**，离线可开、打印友好。
 
