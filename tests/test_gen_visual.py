@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import datetime
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -409,6 +410,124 @@ class TestRealDocE2E(unittest.TestCase):
         self.assertEqual(pm.get('x'), 'A', f'x 的父应为 A, 实际 {pm}')
         self.assertIn('导语一句话。', pm)
         self.assertIsNone(pm['导语一句话。'], f'导语段落不应有子节点: {pm}')
+
+
+class TestCheckGate(unittest.TestCase):
+    """Issue #1: --check 门禁 + 新鲜度徽章。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.today = datetime.date.today()
+        cls.fresh_date = cls.today.isoformat()
+        cls.stale_date = (cls.today - datetime.timedelta(days=100)).isoformat()
+
+    def compliant(self, snapshot_date):
+        return f'''# 示例项目导览
+
+快照 {snapshot_date} @ 5e27ac1 · 新鲜度 FRESH · 之后演进以仓库为准
+
+## 这是什么项目
+三句话。
+
+## 30 秒现状
+- 跑体检脚本
+
+## 文档地图与阅读顺序
+- 先读 README
+
+## 纪律红线
+- 凭据只有路径
+
+## 常用操作配方
+- 重启命令
+
+## 实施轮 checklist
+- 备份 改 测 部署
+
+## 代码地图
+- 按函数名锚点
+
+## 日志事件字典
+- event 字段 grep
+
+## 陷阱清单
+- 热加载坑
+'''
+
+    def run_check(self, md_text):
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / 'in.md'
+            src.write_text(md_text, encoding='utf-8')
+            p = subprocess.run([sys.executable, str(GEN), '--in', str(src), '--check'],
+                               capture_output=True, text=True)
+            return p.returncode, p.stdout + p.stderr
+
+    def test_check_pass_on_compliant(self):
+        """D1: 合规导览（九节+快照块+自评与日期一致）通过门禁。"""
+        rc, out = self.run_check(self.compliant(self.fresh_date))
+        self.assertEqual(rc, 0, out)
+        self.assertIn('检查通过', out)
+
+    def test_check_fail_missing_sections(self):
+        """D2: 缺「代码地图/日志/陷阱」三节 → 非零退出并点名。"""
+        md = self.compliant(self.fresh_date).split('## 代码地图')[0]
+        rc, out = self.run_check(md)
+        self.assertNotEqual(rc, 0)
+        self.assertIn('陷阱清单', out)
+
+    def test_check_fail_snapshot_fields(self):
+        """D3: 快照块缺 commit 与新鲜度自评 → 非零退出。"""
+        md = self.compliant(self.fresh_date).replace(' @ 5e27ac1', '').replace(' · 新鲜度 FRESH', '')
+        rc, out = self.run_check(md)
+        self.assertNotEqual(rc, 0)
+        self.assertIn('[快照块]', out)
+
+    def test_check_fail_freshness_mismatch(self):
+        """D4: 自评 FRESH 但快照已 100 天前 → 非零退出并给出计算值 STALE。"""
+        rc, out = self.run_check(self.compliant(self.stale_date))
+        self.assertNotEqual(rc, 0)
+        self.assertIn('STALE', out)
+
+    def test_check_fail_credentials_and_placeholder_ok(self):
+        """D5: 疑似凭据值 → 非零退出；占位符写法不误报。"""
+        md = self.compliant(self.fresh_date) + '\napi_key = "sk-abcdef1234567890abcd"\n'
+        rc, out = self.run_check(md)
+        self.assertNotEqual(rc, 0)
+        self.assertIn('[凭据]', out)
+        md2 = self.compliant(self.fresh_date) + '\n--token=<your-token> 从环境变量传入\n'
+        rc2, out2 = self.run_check(md2)
+        self.assertEqual(rc2, 0, out2)
+
+    def test_freshness_badge_rendered(self):
+        """D6: --meta 带日期 → 页头渲染徽章；过期日期渲染 STALE 红徽章。"""
+        rc, out, html_text = run_gen('## 陷阱清单\n- x\n', ['--meta', f'快照 {self.fresh_date} @ 5e27ac1'])
+        self.assertEqual(rc, 0, out)
+        self.assertIn('<span class="badge b-fresh">FRESH · 快照', html_text)
+        rc, out, html_text = run_gen('## 陷阱清单\n- x\n', ['--meta', f'快照 {self.stale_date} @ 5e27ac1'])
+        self.assertEqual(rc, 0, out)
+        self.assertIn('<span class="badge b-stale">STALE · 快照', html_text)
+
+    def test_no_badge_without_explicit_meta(self):
+        """D7: 缺省 meta（生成于今天）不渲染徽章。"""
+        rc, out, html_text = run_gen('## 陷阱清单\n- x\n')
+        self.assertEqual(rc, 0, out)
+        self.assertNotIn('<span class="badge', html_text)
+
+    def test_long_flow_chain_renders(self):
+        """D8: 8 节点长链不崩、节点齐全。"""
+        chain = ' -> '.join(f'N{i}' for i in range(1, 9))
+        rc, out, html_text = run_gen(f'```flow\n长链: {chain}\n```\n')
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(html_text.count('class="fbox'), 8)
+
+    def test_out_required_without_check(self):
+        """D9: 无 --out 且无 --check → 非零退出。"""
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / 'in.md'
+            src.write_text('## a\n', encoding='utf-8')
+            p = subprocess.run([sys.executable, str(GEN), '--in', str(src)],
+                               capture_output=True, text=True)
+            self.assertNotEqual(p.returncode, 0)
 
 
 if __name__ == '__main__':

@@ -44,7 +44,8 @@ git clone https://github.com/Aij2022/project-onboarding.git ~/.agents/skills/pro
 ## 生成可视化
 
 ```bash
-python3 scripts/gen_visual.py --in 导览.md --out 图谱.html --title "XX 项目导览" --meta "快照 2026-10-20"
+python3 scripts/gen_visual.py --check 导览.md   # 门禁：九节骨架/快照块/新鲜度一致性/凭据扫描
+python3 scripts/gen_visual.py --in 导览.md --out 图谱.html --title "XX 项目导览" --meta "快照 2026-10-20 @ <项目repo短commit>"
 ```
 
 解析规则（导览按此写，即可被机械生成）：
@@ -53,8 +54,9 @@ python3 scripts/gen_visual.py --in 导览.md --out 图谱.html --title "XX 项�
 - `-` / `*` 列表项 → 叶子（两空格缩进 = 下一层）
 - ` ```flow ` 围栏块 → 流程图，每行一条链：`节点A -> 节点B -> 节点C`，行首 `标签:` 为该链命名（同一块内多条链可各带标签）
 - 其它代码围栏原样保留为 `<pre>` 代码块；围栏未闭合时内容照常投影并 stderr 告警
+- 行内 `**加粗**`/`` `代码` `` 与表格**不渲染**、原样投影；一条流程链 ≤6 节点为宜（超宽横向滚动）
 
-输出为单文件 HTML：`<details>/<summary>` 折叠树 + CSS 流程行，**零 JS 零外部依赖**，离线可开、打印友好。
+输出为单文件 HTML：`<details>/<summary>` 折叠树 + CSS 流程行，**零 JS 零外部依赖**，离线可开、打印友好；页头按 `--meta` 快照日期自动渲染 FRESH/AGING/STALE 徽章（STALE 红色警示）。
 
 ```flow
 示例流程: 摸底盘点 -> 配套脚本先行 -> 写导览 -> 生成可视化 -> 登记交付
